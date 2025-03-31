@@ -1,87 +1,128 @@
 import pygame
 import random
 
+pygame.init()
+
 # Mängu akna suurus
-WIDTH, HEIGHT = 640, 480
+WIDTH, HEIGHT = 500, 500
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("F1 Mäng")
+
+# Värvid
+GRAY = (150, 150, 150)  # Tee hallim toon
+GREEN = (76, 208, 56)
+WHITE = (255, 255, 255)
+
+# Tee ja joonte suurused
+ROAD_WIDTH = 300
+MARKER_WIDTH = 10
+MARKER_HEIGHT = 50
+EDGE_WIDTH = 20  # Valged äärejooned
+
+# Rajad
+left_lane = 167
+center_lane = 250
+right_lane = 333
+lanes = [left_lane, center_lane, right_lane]
+
+# Tee ja äärte jooned
+road = (100, 0, ROAD_WIDTH, HEIGHT)
+left_edge_marker = (100 - EDGE_WIDTH, 0, EDGE_WIDTH, HEIGHT)
+right_edge_marker = (400, 0, EDGE_WIDTH, HEIGHT)
+
+# Mängija algpositsioon
+player_x = center_lane
+player_y = 400
 
 # Laadi pildid
-bg_image = pygame.image.load("bg_rally.jpg")
+game_bg = pygame.image.load("bg_rally.jpg")
 red_car = pygame.image.load("f1_red.png")
 blue_car = pygame.image.load("f1_blue.png")
 
-# Auto suuruse kohandamine
-car_width, car_height = 50, 100
-red_car = pygame.transform.scale(red_car, (car_width, car_height))
-blue_car = pygame.transform.scale(blue_car, (car_width, car_height))
+# Kohanda autode suurust
+auto_suurus = (50, 100)
+red_car = pygame.transform.scale(red_car, auto_suurus)
+blue_car = pygame.transform.scale(blue_car, auto_suurus)
 
-# Pygame algväärtustused
-pygame.init()
-
-# Ekraan ja font
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Racing Game")
-font = pygame.font.Font(None, 36)
-
-def reset_game():
-    global red_x, red_y, blue_cars, score, running
-    red_x, red_y = WIDTH // 2 - car_width // 2, HEIGHT - car_height - 10
-    blue_cars = []
-    for i in range(3):
-        x = random.choice([WIDTH//4 - car_width//2, WIDTH//2 - car_width//2, 3*WIDTH//4 - car_width//2])
-        y = random.randint(-300, -50)
-        blue_cars.append([x, y])
-    score = 0
-
-reset_game()
+# Frame settings
 clock = pygame.time.Clock()
+fps = 60
 
-while True:
-    screen.blit(bg_image, (0, 0))
+# Mängu muutujad
+running = True
+speed = 5
+score = 0
+lane_marker_move_y = 0
+
+
+# Auto klass
+class Vehicle(pygame.sprite.Sprite):
+    def __init__(self, image, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.center = [x, y]
+
+
+# Mängija auto
+player = Vehicle(red_car, player_x, player_y)
+
+# Vastaste autod
+vehicle_group = pygame.sprite.Group()
+
+while running:
+    clock.tick(fps)
+    screen.fill(GREEN)
+    pygame.draw.rect(screen, GRAY, road)
+    pygame.draw.rect(screen, WHITE, left_edge_marker)
+    pygame.draw.rect(screen, WHITE, right_edge_marker)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            pygame.quit()
-            exit()
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT and player.rect.centerx > left_lane:
+                player.rect.x -= 83  # Liiguta vasakule vastavalt uutele radadele
+            if event.key == pygame.K_RIGHT and player.rect.centerx < right_lane:
+                player.rect.x += 83  # Liiguta paremale vastavalt uutele radadele
 
-    # Klahvivajutuste kontroll
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_a] and red_x > WIDTH//4 - car_width//2:
-        red_x -= 5
-    if keys[pygame.K_d] and red_x < 3*WIDTH//4 - car_width//2:
-        red_x += 5
+    # Liikuvad jooned
+    lane_marker_move_y += speed
+    if lane_marker_move_y >= MARKER_HEIGHT * 2:
+        lane_marker_move_y = 0
+    for y in range(-MARKER_HEIGHT * 2, HEIGHT, MARKER_HEIGHT * 2):
+        pygame.draw.rect(screen, WHITE, (left_lane + 41, y + lane_marker_move_y, MARKER_WIDTH, MARKER_HEIGHT))
+        pygame.draw.rect(screen, WHITE, (right_lane - 41, y + lane_marker_move_y, MARKER_WIDTH, MARKER_HEIGHT))
 
-    # Siniste autode liikumine ja kokkupõrke tuvastamine
-    for car in blue_cars:
-        car[1] += 5
-        if car[1] > HEIGHT:
-            car[1] = random.randint(-300, -50)
-            car[0] = random.choice([WIDTH//4 - car_width//2, WIDTH//2 - car_width//2, 3*WIDTH//4 - car_width//2])
+    # Lisa vastase auto
+    if len(vehicle_group) < 2:
+        lane = random.choice(lanes)
+        new_vehicle = Vehicle(blue_car, lane, -auto_suurus[1])
+        vehicle_group.add(new_vehicle)
+
+    # Liiguta vastase autosid
+    for vehicle in vehicle_group:
+        vehicle.rect.y += speed
+        if vehicle.rect.top >= HEIGHT:
+            vehicle.kill()
             score += 1
-        screen.blit(blue_car, (car[0], car[1]))
+            if score % 5 == 0:
+                speed += 1
 
-        # Kokkupõrke kontroll
-        if red_x < car[0] + car_width and red_x + car_width > car[0] and red_y < car[1] + car_height and red_y + car_height > car[1]:
-            game_over_text = font.render("Mäng läbi! Vajuta ENTER, et uuesti alustada", True, (255, 0, 0))
-            screen.blit(game_over_text, (WIDTH // 2 - 200, HEIGHT // 2))
-            pygame.display.update()
-            pygame.time.delay(2000)
+    # Kontrolli kokkupõrget
+    if pygame.sprite.spritecollide(player, vehicle_group, False):
+        running = False
+        print("Mäng läbi!")
 
-            waiting = True
-            while waiting:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        exit()
-                    if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                        reset_game()
-                        waiting = False
+    # Joonista autod
+    vehicle_group.draw(screen)
+    screen.blit(player.image, player.rect)
 
-    # Joonista punane auto
-    screen.blit(red_car, (red_x, red_y))
-
-    # Kuva skoor
-    score_text = font.render("Skoor: " + str(score), True, (255, 255, 255))
+    # Näita skoori
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f"Skoor: {score}", True, WHITE)
     screen.blit(score_text, (10, 10))
 
     pygame.display.update()
-    clock.tick(30)
+
+pygame.quit()
